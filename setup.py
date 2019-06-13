@@ -48,7 +48,7 @@ if using_setuptools:
         'six',
         'enum-compat',
     ]
-    setup_args['dependency_links'] = ['git@github.com:igoral5/scrapyd.git']
+    setup_args['dependency_links'] = ['git+https://github.com/igoral5/scrapy.git']
     setup_args['entry_points'] = {'console_scripts': [
         'scrapyd = scrapyd.scripts.scrapyd_run:main'
     ]}
