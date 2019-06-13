@@ -45,10 +45,10 @@ setup_args = {
 if using_setuptools:
     setup_args['install_requires'] = [
         'Twisted>=8.0',
-        'git+https://github.com/igoral5/scrapy.git',
         'six',
         'enum-compat',
     ]
+    setup_args['dependency_links'] = ['git@github.com:igoral5/scrapyd.git']
     setup_args['entry_points'] = {'console_scripts': [
         'scrapyd = scrapyd.scripts.scrapyd_run:main'
     ]}
