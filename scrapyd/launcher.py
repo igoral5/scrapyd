@@ -1,6 +1,8 @@
 import sys
+import os
 from datetime import datetime
 from multiprocessing import cpu_count
+from tempfile import NamedTemporaryFile
 
 from twisted.internet import reactor, defer, protocol, error
 from twisted.application.service import Service
@@ -35,14 +37,25 @@ class Launcher(Service):
 
     def _spawn_process(self, message, slot):
         msg = native_stringify_dict(message, keys_only=False)
+        file_settings = msg.pop('file_settings', None)
         project = msg['_project']
         args = [sys.executable, '-m', self.runner, 'crawl']
         args += get_crawl_args(msg)
         e = self.app.getComponent(IEnvironment)
         env = e.get_environment(msg, slot)
         env = native_stringify_dict(env, keys_only=False)
+        tmpfile = None
+        if file_settings:
+            with NamedTemporaryFile('w', encoding='utf-8', suffix='.py', delete=False) as tmp:
+                tmp.write(file_settings)
+            path, name_file  = os.path.split(tmp.name)
+            module = os.path.splitext(name_file)[0]
+            env['PYTHONPATH'] = '{}:{}'.format(path, os.environ.get('PYTHONPATH')) \
+                if os.environ.get('PYTHONPATH') else path
+            env['SCRAPY_SETTINGS_MODULE_TO_OVERRIDE'] = module
+            tmpfile = tmp.name
         pp = ScrapyProcessProtocol(slot, project, msg['_spider'], \
-            msg['_job'], env)
+            msg['_job'], env, tmpfile)
         pp.deferred.addBoth(self._process_finished, slot)
         reactor.spawnProcess(pp, sys.executable, args=args, env=env)
         self.processes[slot] = pp
@@ -66,7 +79,7 @@ class Launcher(Service):
 
 class ScrapyProcessProtocol(protocol.ProcessProtocol):
 
-    def __init__(self, slot, project, spider, job, env):
+    def __init__(self, slot, project, spider, job, env, tmpfile):
         self.slot = slot
         self.pid = None
         self.project = project
@@ -77,6 +90,7 @@ class ScrapyProcessProtocol(protocol.ProcessProtocol):
         self.env = env
         self.logfile = env.get('SCRAPY_LOG_FILE')
         self.itemsfile = env.get('SCRAPY_FEED_URI')
+        self.tmpfile = tmpfile
         self.deferred = defer.Deferred()
 
     def outReceived(self, data):
@@ -90,6 +104,8 @@ class ScrapyProcessProtocol(protocol.ProcessProtocol):
         self.log("Process started: ")
 
     def processEnded(self, status):
+        if self.tmpfile:
+            os.remove(self.tmpfile)
         if isinstance(status.value, error.ProcessDone):
             self.log("Process finished: ")
         else:
